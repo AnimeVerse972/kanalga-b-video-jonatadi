@@ -61,6 +61,19 @@ async def start_handler(message: types.Message):
     else:
         await message.answer("🎬 Botga xush kelibsiz!\nKod kiriting:")
 
+# === Oddiy raqam yuborilganda (masalan: "57")
+@dp.message_handler(lambda message: message.text.isdigit())
+async def handle_code_message(message: types.Message):
+    code = message.text
+    if not await is_user_subscribed(message.from_user.id):
+        markup = InlineKeyboardMarkup().add(
+            InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"),
+            InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub:{code}")
+        )
+        await message.answer("❗ Kino olishdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
+    else:
+        await send_reklama_post(message.from_user.id, code)
+
 # === Obuna tekshirish callback
 @dp.callback_query_handler(lambda c: c.data.startswith("check_sub:"))
 async def check_sub(callback: types.CallbackQuery):
