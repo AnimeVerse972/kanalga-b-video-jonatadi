@@ -5,8 +5,8 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
 from dotenv import load_dotenv
-from database import *  # <- SQLite funksiyalar
 from keep_alive import keep_alive
+from database import *
 import os
 
 # === YUKLAMALAR ===
@@ -26,8 +26,6 @@ ADMINS = [6486825926]
 # === HOLATLAR ===
 class AdminStates(StatesGroup):
     waiting_for_kino_data = State()
-    waiting_for_remove_code = State()
-    waiting_for_post_count = State()
 
 # === OBUNA TEKSHIRISH ===
 async def is_user_subscribed(user_id):
@@ -52,135 +50,126 @@ async def start_handler(message: types.Message):
             )
             await message.answer("❗ Kino olishdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
         else:
-            await send_kino_by_code(message.from_user.id, code)
+            await send_reklama_post(message.from_user.id, code)
         return
 
     if message.from_user.id in ADMINS:
-        admin_kb = ReplyKeyboardMarkup(resize_keyboard=True)
-        admin_kb.add("➕ Anime qo‘shish", "❌ Kodni o‘chirish")
-        admin_kb.add("📄 Kodlar ro‘yxati", "📊 Statistika")
-        admin_kb.add("❌ Bekor qilish")
-        await message.answer("👮‍♂️ Admin panel:", reply_markup=admin_kb)
+        kb = ReplyKeyboardMarkup(resize_keyboard=True)
+        kb.add("➕ Anime qo‘shish", "📄 Kodlar ro‘yxati")
+        kb.add("📊 Statistika", "❌ Bekor qilish")
+        await message.answer("👮‍♂️ Admin panel:", reply_markup=kb)
     else:
-        user_kb = ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("🎬 Kino kodi yuborish"))
-        await message.answer("🎬 Botga xush kelibsiz!\nAnimeni ko'rish uchun kod yuboring.", reply_markup=user_kb)
+        await message.answer("🎬 Botga xush kelibsiz!\nKod kiriting:")
 
+# === Obuna tekshirish callback
 @dp.callback_query_handler(lambda c: c.data.startswith("check_sub:"))
 async def check_sub(callback: types.CallbackQuery):
-    code = callback.data.split(":", 1)[1]
+    code = callback.data.split(":")[1]
     if await is_user_subscribed(callback.from_user.id):
-        await callback.message.edit_text("✅ Obuna tasdiqlandi, anime yuborilmoqda...")
-        await send_kino_by_code(callback.from_user.id, code)
+        await callback.message.edit_text("✅ Obuna tasdiqlandi!")
+        await send_reklama_post(callback.from_user.id, code)
     else:
-        await callback.answer("❗ Hali obuna bo'lmagansiz!", show_alert=True)
+        await callback.answer("❗ Obuna bo‘lmagansiz!", show_alert=True)
 
-# === KINO YUBORISH ===
-async def send_kino_by_code(chat_id, code, post_count=1):
+# === Reklama postni yuborish
+async def send_reklama_post(user_id, code):
+    data = get_kino_by_code(code)
+    if not data:
+        await bot.send_message(user_id, "❌ Kod topilmadi.")
+        return
+
+    channel, reklama_id, post_count = data
+
+    # Tugmalarni yasash
+    buttons = [InlineKeyboardButton(str(i), callback_data=f"kino:{code}:{i}") for i in range(1, post_count + 1)]
+    keyboard = InlineKeyboardMarkup(row_width=5)
+    keyboard.add(*buttons)
+
+    try:
+        await bot.copy_message(user_id, channel, reklama_id - 1, reply_markup=keyboard)
+    except:
+        await bot.send_message(user_id, "❌ Reklama postni yuborib bo‘lmadi.")
+
+# === Tugmani bosganda kino post yuborish
+@dp.callback_query_handler(lambda c: c.data.startswith("kino:"))
+async def kino_button(callback: types.CallbackQuery):
+    _, code, number = callback.data.split(":")
+    number = int(number)
+
     result = get_kino_by_code(code)
-    if result:
-        channel, message_id = result
-        await bot.copy_message(chat_id, channel, message_id)
-        for i in range(1, post_count):
-            await bot.copy_message(chat_id, channel, message_id + i)
-    else:
-        await bot.send_message(chat_id, "❌ Bunday kod topilmadi.")
+    if not result:
+        await callback.message.answer("❌ Kod topilmadi.")
+        return
+
+    channel, base_id, post_count = result
+
+    if number > post_count:
+        await callback.answer("❌ Bunday post yo‘q!", show_alert=True)
+        return
+
+    await bot.copy_message(callback.from_user.id, channel, base_id + number - 1)
+    await callback.answer()
+
+# === ➕ Anime qo‘shish
+@dp.message_handler(lambda m: m.text == "➕ Anime qo‘shish")
+async def add_start(message: types.Message):
+    if message.from_user.id in ADMINS:
+        await AdminStates.waiting_for_kino_data.set()
+        await message.answer("📝 Format: `KOD @kanal REKLAMA_ID POST_SONI`\nMasalan: `91 @MyKino 4 12`", parse_mode="Markdown")
 
 @dp.message_handler(state=AdminStates.waiting_for_kino_data)
 async def add_kino_handler(message: types.Message, state: FSMContext):
     parts = message.text.strip().split()
-    if len(parts) == 3 and parts[0].isdigit() and parts[2].isdigit():
-        code, channel, rekl_id = parts
-        message_id = int(rekl_id)
+    if len(parts) != 4:
+        await message.answer("❌ Format noto‘g‘ri!\nMasalan: `91 @MyKino 4 12`")
+        return await state.finish()
 
-        # Bazaga kino postni ID sini reklama+1 qilib qo‘shamiz
-        add_kino_code(code, channel, message_id + 1)
+    code, channel, reklama_id, post_count = parts
+    if not (code.isdigit() and reklama_id.isdigit() and post_count.isdigit()):
+        await message.answer("❌ Kod, post ID va son raqam bo‘lishi kerak.")
+        return await state.finish()
 
-        # 📥 Yuklab olish tugmasi
-        kb = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("📥 Yuklab olish", callback_data=f"download:{code}")
-        )
+    reklama_id, post_count = int(reklama_id), int(post_count)
+    add_kino_code(code, channel, reklama_id + 1, post_count)
 
-        # ✅ Reklama postni nusxalab kanalga qayta yuborish (tugma bilan)
-        try:
-            await bot.copy_message(
-                chat_id=channel,
-                from_chat_id=channel,
-                message_id=message_id,
-                reply_markup=kb
-            )
-            await message.answer("✅ Reklama post nusxalandi va yuklab olish tugmasi qo‘shildi!")
-        except Exception as e:
-            await message.answer(f"❌ Xatolik: {e}")
+    # Inline tugmalar
+    buttons = [InlineKeyboardButton(str(i), callback_data=f"kino:{code}:{i}") for i in range(1, post_count + 1)]
+    keyboard = InlineKeyboardMarkup(row_width=5)
+    keyboard.add(*buttons)
 
-    else:
-        await message.answer("❌ Noto‘g‘ri format!\nMasalan: `91 @MyChannel 4`", parse_mode="Markdown")
+    try:
+        await bot.copy_message(chat_id=channel, from_chat_id=channel, message_id=reklama_id, reply_markup=keyboard)
+        await message.answer("✅ Reklama post nusxalandi va tugmalar qo‘shildi.")
+    except Exception as e:
+        await message.answer(f"❌ Xatolik: {e}")
     await state.finish()
 
-
-# === 📥 Yuklab olish ===
-@dp.callback_query_handler(lambda c: c.data.startswith("download:"))
-async def ask_post_count(callback: types.CallbackQuery, state: FSMContext):
-    code = callback.data.split(":", 1)[1]
-    await state.update_data(code=code)
-    await AdminStates.waiting_for_post_count.set()
-    await callback.message.answer("📥 Nechta post yuborilsin? (1 dan 10 gacha son kiriting):")
-
-@dp.message_handler(state=AdminStates.waiting_for_post_count)
-async def post_count_handler(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    code = data.get("code")
-    post_count = message.text.strip()
-
-    if post_count.isdigit() and 1 <= int(post_count) <= 10:
-        await send_kino_by_code(message.from_user.id, code, int(post_count))
-        await message.answer(f"✅ {post_count} ta post yuborildi.")
-    else:
-        await message.answer("❌ Iltimos, 1 dan 10 gacha son kiriting.")
-    await state.finish()
-
-# === ❌ Kodni o‘chirish ===
-@dp.message_handler(lambda m: m.text == "❌ Kodni o‘chirish")
-async def cmd_remove_start(message: types.Message):
-    if message.from_user.id in ADMINS:
-        await AdminStates.waiting_for_remove_code.set()
-        await message.answer("🗑 O‘chirmoqchi bo‘lgan kodni yozing:")
-
-@dp.message_handler(state=AdminStates.waiting_for_remove_code)
-async def remove_kino_handler(message: types.Message, state: FSMContext):
-    code = message.text.strip()
-    if get_kino_by_code(code):
-        remove_kino_code(code)
-        await message.answer(f"✅ Kod {code} o‘chirildi.")
-    else:
-        await message.answer("❌ Bunday kod topilmadi.")
-    await state.finish()
-
-# === 📄 Kodlar ro‘yxati ===
+# === Kodlar ro‘yxati
 @dp.message_handler(lambda m: m.text == "📄 Kodlar ro‘yxati")
-async def list_kodlar(message: types.Message):
-    kino = get_all_codes()
-    if not kino:
-        return await message.answer("📂 Hech qanday kod yo‘q.")
-    txt = "📄 Kodlar ro‘yxati:\n"
-    for code, channel, msg_id in kino:
-        txt += f"🔹 {code} → kanal {channel} | kino_post={msg_id}\n"
-    await message.answer(txt)
+async def kodlar(message: types.Message):
+    kodlar = get_all_codes()
+    if not kodlar:
+        await message.answer("📂 Kodlar yo‘q.")
+        return
+    text = "📄 Kodlar:\n"
+    for code, ch, msg_id, count in kodlar:
+        text += f"🔹 {code} → {ch} | {msg_id} ({count} post)\n"
+    await message.answer(text)
 
-# === 📊 Statistika ===
+# === Statistika
 @dp.message_handler(lambda m: m.text == "📊 Statistika")
 async def stats(message: types.Message):
     await message.answer(f"📦 Kodlar: {len(get_all_codes())}\n👥 Foydalanuvchilar: {get_user_count()}")
 
-# === ❌ Bekor qilish ===
-@dp.message_handler(lambda m: m.text == "❌ Bekor qilish", state='*')
-async def cancel_handler(message: types.Message, state: FSMContext):
+# === Bekor qilish
+@dp.message_handler(lambda m: m.text == "❌ Bekor qilish", state="*")
+async def cancel(message: types.Message, state: FSMContext):
     await state.finish()
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("➕ Anime qo‘shish", "❌ Kodni o‘chirish")
-    kb.add("📄 Kodlar ro‘yxati", "📊 Statistika")
-    kb.add("❌ Bekor qilish")
-    await message.answer("❌ Amal bekor qilindi.", reply_markup=kb)
+    kb.add("➕ Anime qo‘shish", "📄 Kodlar ro‘yxati")
+    kb.add("📊 Statistika", "❌ Bekor qilish")
+    await message.answer("❌ Bekor qilindi", reply_markup=kb)
 
-# === ISHGA TUSHURISH ===
+# === BOT START
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
