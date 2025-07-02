@@ -83,16 +83,18 @@ async def send_reklama_post(user_id, code):
     channel, reklama_id, post_count = data
 
     try:
+        # Reklama postini yuborish
         await bot.copy_message(user_id, channel, reklama_id - 1)
+
+        # Tugmalar (raqamlar)
+        buttons = [InlineKeyboardButton(str(i), callback_data=f"kino:{code}:{i}") for i in range(1, post_count + 1)]
+        keyboard = InlineKeyboardMarkup(row_width=5)
+        keyboard.add(*buttons)
+
+        # Raqam tugmalarini reklama post tagiga chiqarish
+        await bot.send_message(user_id, "📥 Yuklab olish:", reply_markup=keyboard)
     except:
         await bot.send_message(user_id, "❌ Reklama postni yuborib bo‘lmadi.")
-        return
-
-    buttons = [InlineKeyboardButton(str(i), callback_data=f"kino:{code}:{i}") for i in range(1, post_count + 1)]
-    keyboard = InlineKeyboardMarkup(row_width=5)
-    keyboard.add(*buttons)
-
-    await bot.send_message(user_id, "🎬 Qismlarni tanlang:", reply_markup=keyboard)
 
 # === Tugmani bosganda kino post yuborish
 @dp.callback_query_handler(lambda c: c.data.startswith("kino:"))
@@ -111,9 +113,8 @@ async def kino_button(callback: types.CallbackQuery):
         await callback.answer("❌ Bunday post yo‘q!", show_alert=True)
         return
 
-    for i in range(number):
-        await bot.copy_message(callback.from_user.id, channel, base_id + i)
-
+    # Faqat tanlangan bitta postni yuborish
+    await bot.copy_message(callback.from_user.id, channel, base_id + (number - 1))
     await callback.answer()
 
 # === ➕ Anime qo‘shish
@@ -154,7 +155,7 @@ async def add_kino_handler(message: types.Message, state: FSMContext):
 
         await bot.send_message(
             chat_id=CHANNEL_USERNAME,
-            text="📥 Yuklab olish:",
+            text="​",  # hech narsa yo'q
             reply_markup=dl_kb
         )
 
