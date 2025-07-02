@@ -121,25 +121,34 @@ async def add_start(message: types.Message):
 async def add_kino_handler(message: types.Message, state: FSMContext):
     parts = message.text.strip().split()
     if len(parts) != 4:
-        await message.answer("❌ Format noto‘g‘ri!\nMasalan: `91 @MyKino 4 12`")
+        await message.answer("❌ Format noto‘g‘ri!\nMasalan: `91 @MyServer 4 12`")
         return await state.finish()
 
-    code, channel, reklama_id, post_count = parts
+    code, server_channel, reklama_id, post_count = parts
     if not (code.isdigit() and reklama_id.isdigit() and post_count.isdigit()):
         await message.answer("❌ Kod, post ID va son raqam bo‘lishi kerak.")
         return await state.finish()
 
-    reklama_id, post_count = int(reklama_id), int(post_count)
-    add_kino_code(code, channel, reklama_id + 1, post_count)
+    reklama_id = int(reklama_id)
+    post_count = int(post_count)
 
-    # Inline tugmalar
+    # 🔒 server kanal (kino bazasi) ni saqlaymiz
+    add_kino_code(code, server_channel, reklama_id + 1, post_count)
+
+    # 🔘 Tugmalar yasaymiz
     buttons = [InlineKeyboardButton(str(i), callback_data=f"kino:{code}:{i}") for i in range(1, post_count + 1)]
     keyboard = InlineKeyboardMarkup(row_width=5)
     keyboard.add(*buttons)
 
     try:
-        await bot.copy_message(chat_id=channel, from_chat_id=channel, message_id=reklama_id, reply_markup=keyboard)
-        await message.answer("✅ Reklama post nusxalandi va tugmalar qo‘shildi.")
+        # 🟢 ASOSIY REKLAMA KANALGA REKLAMA POSTINI NUSXA QILAMIZ
+        await bot.copy_message(
+            chat_id=CHANNEL_USERNAME,  # bu `.env` dagi asosiy kanal
+            from_chat_id=server_channel,  # kino bazasi
+            message_id=reklama_id,
+            reply_markup=keyboard
+        )
+        await message.answer("✅ Reklama asosiy kanalga yuborildi va tugmalar qo‘shildi.")
     except Exception as e:
         await message.answer(f"❌ Xatolik: {e}")
     await state.finish()
