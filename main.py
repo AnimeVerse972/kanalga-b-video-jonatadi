@@ -133,7 +133,7 @@ async def add_kino_handler(message: types.Message, state: FSMContext):
     post_count = int(post_count)
 
     # 🔒 server kanal (kino bazasi) ni saqlaymiz
-    add_kino_code(code, server_channel, reklama_id + 1, post_count)
+    add_kino_code(code, server_channel, reklama_id, post_count)
 
     # 🔘 Tugmalar yasaymiz
     buttons = [InlineKeyboardButton(str(i), callback_data=f"kino:{code}:{i}") for i in range(1, post_count + 1)]
