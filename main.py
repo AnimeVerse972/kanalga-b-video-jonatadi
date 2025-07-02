@@ -85,27 +85,37 @@ async def send_kino_by_code(chat_id, code, post_count=1):
     else:
         await bot.send_message(chat_id, "❌ Bunday kod topilmadi.")
 
-# === ➕ Kino qo‘shish ===
-@dp.message_handler(lambda m: m.text == "➕ Anime qo‘shish")
-async def cmd_add_start(message: types.Message):
-    if message.from_user.id in ADMINS:
-        await AdminStates.waiting_for_kino_data.set()
-        await message.answer("📝 Format: `KOD @Kanal 4`\nMasalan: `91 @MyChannel 4`", parse_mode="Markdown")
-
 @dp.message_handler(state=AdminStates.waiting_for_kino_data)
 async def add_kino_handler(message: types.Message, state: FSMContext):
     parts = message.text.strip().split()
     if len(parts) == 3 and parts[0].isdigit() and parts[2].isdigit():
         code, channel, rekl_id = parts
-        add_kino_code(code, channel, int(rekl_id) + 1)
+        message_id = int(rekl_id)
 
-        url = f"https://t.me/{BOT_USERNAME.strip('@')}?start={code}"
-        kb = InlineKeyboardMarkup().add(InlineKeyboardButton("📥 Yuklab olish", callback_data=f"download:{code}"))
-        await bot.send_message(channel, message.text, reply_markup=kb, parse_mode="Markdown")
-        await message.answer("✅ Anime qo‘shildi va reklama post yuborildi!")
+        # Bazaga kino postni ID sini reklama+1 qilib qo‘shamiz
+        add_kino_code(code, channel, message_id + 1)
+
+        # 📥 Yuklab olish tugmasi
+        kb = InlineKeyboardMarkup().add(
+            InlineKeyboardButton("📥 Yuklab olish", callback_data=f"download:{code}")
+        )
+
+        # ✅ Reklama postni nusxalab kanalga qayta yuborish (tugma bilan)
+        try:
+            await bot.copy_message(
+                chat_id=channel,
+                from_chat_id=channel,
+                message_id=message_id,
+                reply_markup=kb
+            )
+            await message.answer("✅ Reklama post nusxalandi va yuklab olish tugmasi qo‘shildi!")
+        except Exception as e:
+            await message.answer(f"❌ Xatolik: {e}")
+
     else:
-        await message.answer("❌ Noto‘g‘ri format!\nMasalan: `91 @Kanal 4`", parse_mode="Markdown")
+        await message.answer("❌ Noto‘g‘ri format!\nMasalan: `91 @MyChannel 4`", parse_mode="Markdown")
     await state.finish()
+
 
 # === 📥 Yuklab olish ===
 @dp.callback_query_handler(lambda c: c.data.startswith("download:"))
