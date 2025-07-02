@@ -1,4 +1,3 @@
-import sqlite3
 from aiogram import Bot, Dispatcher, types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
@@ -46,8 +45,7 @@ async def start_handler(message: types.Message):
         code = args
         if not await is_user_subscribed(message.from_user.id):
             markup = InlineKeyboardMarkup().add(
-                InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}")
-            ).add(
+                InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"),
                 InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub:{code}")
             )
             await message.answer("❗ Kino olishdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
@@ -82,17 +80,15 @@ async def send_reklama_post(user_id, code):
 
     channel, reklama_id, post_count = data
 
-    try:
-        await bot.copy_message(user_id, channel, reklama_id - 1)
-    except:
-        await bot.send_message(user_id, "❌ Reklama postni yuborib bo‘lmadi.")
-        return
-
+    # Tugmalarni yasash
     buttons = [InlineKeyboardButton(str(i), callback_data=f"kino:{code}:{i}") for i in range(1, post_count + 1)]
     keyboard = InlineKeyboardMarkup(row_width=5)
     keyboard.add(*buttons)
 
-    await bot.send_message(user_id, "🎬 Qismlarni tanlang:", reply_markup=keyboard)
+    try:
+        await bot.copy_message(user_id, channel, reklama_id - 1, reply_markup=keyboard)
+    except:
+        await bot.send_message(user_id, "❌ Reklama postni yuborib bo‘lmadi.")
 
 # === Tugmani bosganda kino post yuborish
 @dp.callback_query_handler(lambda c: c.data.startswith("kino:"))
@@ -111,9 +107,7 @@ async def kino_button(callback: types.CallbackQuery):
         await callback.answer("❌ Bunday post yo‘q!", show_alert=True)
         return
 
-    for i in range(number):
-        await bot.copy_message(callback.from_user.id, channel, base_id + i)
-
+    await bot.copy_message(callback.from_user.id, channel, base_id + number - 1)
     await callback.answer()
 
 # === ➕ Anime qo‘shish
@@ -138,30 +132,25 @@ async def add_kino_handler(message: types.Message, state: FSMContext):
     reklama_id = int(reklama_id)
     post_count = int(post_count)
 
+    # 🔒 server kanal (kino bazasi) ni saqlaymiz
     add_kino_code(code, server_channel, reklama_id + 1, post_count)
 
+    # 🔘 Tugmalar yasaymiz
+    buttons = [InlineKeyboardButton(str(i), callback_data=f"kino:{code}:{i}") for i in range(1, post_count + 1)]
+    keyboard = InlineKeyboardMarkup(row_width=5)
+    keyboard.add(*buttons)
+
     try:
+        # 🟢 ASOSIY REKLAMA KANALGA REKLAMA POSTINI NUSXA QILAMIZ
         await bot.copy_message(
-            chat_id=CHANNEL_USERNAME,
-            from_chat_id=server_channel,
-            message_id=reklama_id
+            chat_id=CHANNEL_USERNAME,  # bu `.env` dagi asosiy kanal
+            from_chat_id=server_channel,  # kino bazasi
+            message_id=reklama_id,
+            reply_markup=keyboard
         )
-
-        dl_url = f"https://t.me/{BOT_USERNAME.strip('@')}?start={code}"
-        dl_kb = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("📥 Yuklab olish", url=dl_url)
-        )
-
-        await bot.send_message(
-            chat_id=CHANNEL_USERNAME,
-            text="📥 Yuklab olish:",
-            reply_markup=dl_kb
-        )
-
-        await message.answer("✅ Reklama asosiy kanalga yuborildi va yuklab olish tugmasi qo‘shildi.")
+        await message.answer("✅ Reklama asosiy kanalga yuborildi va tugmalar qo‘shildi.")
     except Exception as e:
         await message.answer(f"❌ Xatolik: {e}")
-
     await state.finish()
 
 # === Kodlar ro‘yxati
