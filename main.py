@@ -4,27 +4,26 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
-from dotenv import load_dotenv
 from keep_alive import keep_alive
+from dotenv import load_dotenv
 import os
 import sqlite3
 
+# === YUKLAMALAR ===
 load_dotenv()
 keep_alive()
 
 API_TOKEN = os.getenv("API_TOKEN")
 CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")
+BOT_USERNAME = os.getenv("BOT_USERNAME")
 
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
-class AdminStates(StatesGroup):
-    waiting_for_code = State()
-    waiting_for_remove = State()
-    waiting_for_admin_id = State()
+ADMINS = [6486825926]
 
-# SQLite ma'lumotlar bazasi bilan ishlash funksiyalari
+# === SQLite ma'lumotlar bazasi bilan ishlash funksiyalari ===
 def create_tables():
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
@@ -104,24 +103,30 @@ def code_exists(code):
     return result[0] if result else None
 
 def is_admin(user_id):
-    # Admin ID'larini tekshirish
-    return user_id == 6486825926  # O'z ID'ingizni qo'shing
+    return user_id in ADMINS  # Admin ID'larini tekshirish
 
 async def is_user_subscribed(user_id):
     try:
         member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
         return member.status in ['member', 'administrator', 'creator']
     except Exception as e:
-        print(f"Error checking subscription: {e}")  # Xatolikni konsolga chiqarish
+        print(f"Error checking subscription: {e}")
         return False
 
+# === HOLATLAR ===
+class AdminStates(StatesGroup):
+    waiting_for_code = State()
+    waiting_for_remove = State()
+    waiting_for_admin_id = State()
+
+# === /start ===
 @dp.message_handler(commands=['start'])
 async def start_handler(message: types.Message):
     add_user(message.from_user.id)  # Foydalanuvchini qo'shish
 
     if await is_user_subscribed(message.from_user.id):
         buttons = [[KeyboardButton("📢 Reklama"), KeyboardButton("💼 Homiylik")]]
-        if is_admin(message.from_user.id):  # await qo'shilmadi, chunki bu sinxron funksiya
+        if is_admin(message.from_user.id):
             buttons.append([KeyboardButton("🛠 Admin panel")])
         markup = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
         await message.answer("✅ Obuna bor. Kodni yuboring:", reply_markup=markup)
@@ -132,11 +137,6 @@ async def start_handler(message: types.Message):
             InlineKeyboardButton("✅ Tekshirish", callback_data="check_sub")
         )
         await message.answer("❗ Iltimos, kanalga obuna bo‘ling:", reply_markup=markup)
-
-@dp.message_handler(commands=["myid"])
-async def get_my_id(message: types.Message):
-    status = "Admin" if is_admin(message.from_user.id) else "Oddiy foydalanuvchi"
-    await message.answer(f"🆔 ID: `{message.from_user.id}`\n👤 Holat: {status}", parse_mode="Markdown")
 
 @dp.callback_query_handler(lambda c: c.data == "check_sub")
 async def check_subscription(callback_query: types.CallbackQuery):
@@ -173,7 +173,7 @@ async def admin_handler(message: types.Message):
 @dp.message_handler(lambda m: m.text == "🔙 Orqaga")
 async def back_to_menu(message: types.Message):
     buttons = [[KeyboardButton("📢 Reklama"), KeyboardButton("💼 Homiylik")]]
-    if is_admin(message.from_user.id):  # await qo'shilmadi, chunki bu sinxron funksiya
+    if is_admin(message.from_user.id):
         buttons.append([KeyboardButton("🛠 Admin panel")])
     markup = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
     await message.answer("🏠 Asosiy menyuga qaytdingiz.", reply_markup=markup)
@@ -203,7 +203,6 @@ async def add_code_handler(message: types.Message, state: FSMContext):
     await message.answer(f"✅ {success_count} ta kod qo‘shildi.")
     await state.finish()
 
-
 @dp.message_handler(lambda m: m.text == "❌ Kodni o‘chirish")
 async def start_remove_code(message: types.Message):
     await message.answer("🗑 O‘chirmoqchi bo‘lgan kodni yuboring:")
@@ -228,7 +227,6 @@ async def remove_code_handler(message: types.Message, state: FSMContext):
 
     await message.answer(f"✅ {success_count} ta kod o‘chirildi.")
     await state.finish()
-
 
 @dp.message_handler(lambda m: m.text == "📄 Kodlar ro‘yxati")
 async def list_codes_handler(message: types.Message):
@@ -263,7 +261,7 @@ async def add_admin_handler(message: types.Message, state: FSMContext):
     if user_id.isdigit():
         user_id = int(user_id)
         if not is_admin(user_id):  # await qo'shilmadi, chunki bu sinxron funksiya
-            # Admin qo'shish logikasi
+            add_admin(user_id)
             await message.answer(f"✅ Admin qo‘shildi: `{user_id}`")
         else:
             await message.answer("⚠️ Bu foydalanuvchi allaqachon admin.")
