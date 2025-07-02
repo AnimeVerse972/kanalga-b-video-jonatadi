@@ -135,10 +135,11 @@ async def add_kino_handler(message: types.Message, state: FSMContext):
     # 🧠 Qismlar reklama postdan keyin boshlanadi → shuning uchun +1
     add_kino_code(code, server_channel, reklama_id + 1, post_count)
 
-    # 📥 Yuklab olish tugmasi (callback orqali ishlaydi)
+    # 🟢 Yuklab olish URL tugmasi (foydalanuvchini botga olib boradi)
     download_btn = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("📥 Yuklab olish", callback_data=f"download:{code}")
-    )
+    InlineKeyboardButton("📥 Yuklab olish", url=f"https://t.me/{BOT_USERNAME}?start={code}")
+)
+
 
     try:
         # ✅ Kanalga reklama postni tugma bilan yuborish
