@@ -1,17 +1,15 @@
+import sqlite3
 from aiogram import Bot, Dispatcher, types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
 from dotenv import load_dotenv
-from keep_alive import keep_alive
-from database import *
 import os
 
 # === YUKLAMALAR ===
 load_dotenv()
-keep_alive()
 
 API_TOKEN = os.getenv("API_TOKEN")
 CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")
@@ -21,9 +19,37 @@ bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
-ADMINS = [6486825926]
+ADMINS = [6486825926]  # Admin ID
 
-# === HOLATLAR ===
+# === BAZA TAYYORLASH ===
+def init_db():
+    with sqlite3.connect("kino.db") as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS kino (
+                code TEXT PRIMARY KEY,
+                channel TEXT,
+                message_id INTEGER,
+                count INTEGER
+            )
+        ''')
+
+init_db()
+
+# === DB FUNKSIYALAR ===
+def get_kino_by_code(code):
+    with sqlite3.connect("kino.db") as conn:
+        c = conn.cursor()
+        c.execute("SELECT channel, message_id, count FROM kino WHERE code = ?", (code,))
+        return c.fetchone()
+
+def add_kino_code(code, channel, message_id, count):
+    with sqlite3.connect("kino.db") as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO kino (code, channel, message_id, count)
+            VALUES (?, ?, ?, ?)
+        """, (code, channel, message_id, count))
+
+# === HOLAT ===
 class AdminStates(StatesGroup):
     waiting_for_kino_data = State()
 
@@ -35,11 +61,9 @@ async def is_user_subscribed(user_id):
     except:
         return False
 
-# === /start ===
+# === START ===
 @dp.message_handler(commands=['start'])
 async def start_handler(message: types.Message):
-    add_user(message.from_user.id)
-
     args = message.get_args()
     if args and args.isdigit():
         code = args
@@ -52,16 +76,8 @@ async def start_handler(message: types.Message):
         else:
             await send_reklama_post(message.from_user.id, code)
         return
+    await message.answer("🎬 Kod yuboring yoki reklama tugmasini bosing.")
 
-    if message.from_user.id in ADMINS:
-        kb = ReplyKeyboardMarkup(resize_keyboard=True)
-        kb.add("➕ Anime qo‘shish", "📄 Kodlar ro‘yxati")
-        kb.add("📊 Statistika", "❌ Bekor qilish")
-        await message.answer("👮‍♂️ Admin panel:", reply_markup=kb)
-    else:
-        await message.answer("🎬 Botga xush kelibsiz!\nKod kiriting:")
-
-# === Obuna tekshirish callback
 @dp.callback_query_handler(lambda c: c.data.startswith("check_sub:"))
 async def check_sub(callback: types.CallbackQuery):
     code = callback.data.split(":")[1]
@@ -71,26 +87,21 @@ async def check_sub(callback: types.CallbackQuery):
     else:
         await callback.answer("❗ Obuna bo‘lmagansiz!", show_alert=True)
 
-# === Reklama postni yuborish
-async def send_reklama_post(user_id, code):
+# === FILMNI YUBORISH ===
+async def send_reklama_post(chat_id, code):
     data = get_kino_by_code(code)
     if not data:
-        await bot.send_message(user_id, "❌ Kod topilmadi.")
-        return
+        return await bot.send_message(chat_id, "❌ Kod topilmadi.")
 
     channel, reklama_id, post_count = data
+    await bot.copy_message(chat_id, channel, reklama_id - 1)
 
-    # Tugmalarni yasash
     buttons = [InlineKeyboardButton(str(i), callback_data=f"kino:{code}:{i}") for i in range(1, post_count + 1)]
-    keyboard = InlineKeyboardMarkup(row_width=5)
-    keyboard.add(*buttons)
+    kb = InlineKeyboardMarkup(row_width=5)
+    kb.add(*buttons)
 
-    try:
-        await bot.copy_message(user_id, channel, reklama_id - 1, reply_markup=keyboard)
-    except:
-        await bot.send_message(user_id, "❌ Reklama postni yuborib bo‘lmadi.")
+    await bot.send_message(chat_id, "🎬 Qismlarni tanlang:", reply_markup=kb)
 
-# === Tugmani bosganda kino post yuborish
 @dp.callback_query_handler(lambda c: c.data.startswith("kino:"))
 async def kino_button(callback: types.CallbackQuery):
     _, code, number = callback.data.split(":")
@@ -98,30 +109,30 @@ async def kino_button(callback: types.CallbackQuery):
 
     result = get_kino_by_code(code)
     if not result:
-        await callback.message.answer("❌ Kod topilmadi.")
-        return
+        return await callback.message.answer("❌ Kod topilmadi.")
 
     channel, base_id, post_count = result
 
     if number > post_count:
-        await callback.answer("❌ Bunday post yo‘q!", show_alert=True)
-        return
+        return await callback.answer("❌ Bunday post yo‘q!", show_alert=True)
 
-    await bot.copy_message(callback.from_user.id, channel, base_id + number - 1)
+    for i in range(number):
+        await bot.copy_message(callback.from_user.id, channel, base_id + i)
+
     await callback.answer()
 
-# === ➕ Anime qo‘shish
-@dp.message_handler(lambda m: m.text == "➕ Anime qo‘shish")
-async def add_start(message: types.Message):
+# === ADMIN KOD QO‘SHISH ===
+@dp.message_handler(commands=['add'])
+async def cmd_add_start(message: types.Message):
     if message.from_user.id in ADMINS:
         await AdminStates.waiting_for_kino_data.set()
-        await message.answer("📝 Format: `KOD @kanal REKLAMA_ID POST_SONI`\nMasalan: `91 @MyKino 4 12`", parse_mode="Markdown")
+        await message.answer("📝 Format: `KOD @ServerChannel REKLAMA_POST_ID POST_SONI`\nMasalan: `91 @KinoServer 4 12`", parse_mode="Markdown")
 
 @dp.message_handler(state=AdminStates.waiting_for_kino_data)
 async def add_kino_handler(message: types.Message, state: FSMContext):
     parts = message.text.strip().split()
     if len(parts) != 4:
-        await message.answer("❌ Format noto‘g‘ri!\nMasalan: `91 @MyServer 4 12`")
+        await message.answer("❌ Format noto‘g‘ri!")
         return await state.finish()
 
     code, server_channel, reklama_id, post_count = parts
@@ -132,53 +143,28 @@ async def add_kino_handler(message: types.Message, state: FSMContext):
     reklama_id = int(reklama_id)
     post_count = int(post_count)
 
-    # 🔒 server kanal (kino bazasi) ni saqlaymiz
     add_kino_code(code, server_channel, reklama_id + 1, post_count)
 
-    # 🔘 Tugmalar yasaymiz
-    buttons = [InlineKeyboardButton(str(i), callback_data=f"kino:{code}:{i}") for i in range(1, post_count + 1)]
-    keyboard = InlineKeyboardMarkup(row_width=5)
-    keyboard.add(*buttons)
+    await bot.copy_message(
+        chat_id=CHANNEL_USERNAME,
+        from_chat_id=server_channel,
+        message_id=reklama_id
+    )
 
-    try:
-        # 🟢 ASOSIY REKLAMA KANALGA REKLAMA POSTINI NUSXA QILAMIZ
-        await bot.copy_message(
-            chat_id=CHANNEL_USERNAME,  # bu `.env` dagi asosiy kanal
-            from_chat_id=server_channel,  # kino bazasi
-            message_id=reklama_id,
-            reply_markup=keyboard
-        )
-        await message.answer("✅ Reklama asosiy kanalga yuborildi va tugmalar qo‘shildi.")
-    except Exception as e:
-        await message.answer(f"❌ Xatolik: {e}")
+    dl_url = f"https://t.me/{BOT_USERNAME.strip('@')}?start={code}"
+    dl_kb = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("📥 Yuklab olish", url=dl_url)
+    )
+
+    await bot.send_message(
+        chat_id=CHANNEL_USERNAME,
+        text="📥 Yuklab olish:",
+        reply_markup=dl_kb
+    )
+
+    await message.answer("✅ Kod qo‘shildi va reklama kanalga yuborildi!")
     await state.finish()
 
-# === Kodlar ro‘yxati
-@dp.message_handler(lambda m: m.text == "📄 Kodlar ro‘yxati")
-async def kodlar(message: types.Message):
-    kodlar = get_all_codes()
-    if not kodlar:
-        await message.answer("📂 Kodlar yo‘q.")
-        return
-    text = "📄 Kodlar:\n"
-    for code, ch, msg_id, count in kodlar:
-        text += f"🔹 {code} → {ch} | {msg_id} ({count} post)\n"
-    await message.answer(text)
-
-# === Statistika
-@dp.message_handler(lambda m: m.text == "📊 Statistika")
-async def stats(message: types.Message):
-    await message.answer(f"📦 Kodlar: {len(get_all_codes())}\n👥 Foydalanuvchilar: {get_user_count()}")
-
-# === Bekor qilish
-@dp.message_handler(lambda m: m.text == "❌ Bekor qilish", state="*")
-async def cancel(message: types.Message, state: FSMContext):
-    await state.finish()
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("➕ Anime qo‘shish", "📄 Kodlar ro‘yxati")
-    kb.add("📊 Statistika", "❌ Bekor qilish")
-    await message.answer("❌ Bekor qilindi", reply_markup=kb)
-
-# === BOT START
+# === ISHGA TUSHURISH ===
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
