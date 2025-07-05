@@ -6,7 +6,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from aiogram.utils import executor
 from dotenv import load_dotenv
 from keep_alive import keep_alive
-from database import *
+from database import init_db, add_user, get_user_count, add_kino_code, get_kino_by_code, get_all_codes
 import os
 
 # === YUKLAMALAR ===
@@ -38,7 +38,7 @@ async def is_user_subscribed(user_id):
 # === /start ===
 @dp.message_handler(commands=['start'])
 async def start_handler(message: types.Message):
-    add_user(message.from_user.id)
+    await add_user(message.from_user.id)
 
     args = message.get_args()
     if args and args.isdigit():
@@ -61,7 +61,7 @@ async def start_handler(message: types.Message):
     else:
         await message.answer("🎬 Botga xush kelibsiz!\nKod kiriting:")
 
-# === Oddiy raqam yuborilganda (masalan: "57")
+# === Oddiy raqam yuborilganda
 @dp.message_handler(lambda message: message.text.isdigit())
 async def handle_code_message(message: types.Message):
     code = message.text
@@ -86,14 +86,13 @@ async def check_sub(callback: types.CallbackQuery):
 
 # === Reklama postni yuborish
 async def send_reklama_post(user_id, code):
-    data = get_kino_by_code(code)
+    data = await get_kino_by_code(code)
     if not data:
         await bot.send_message(user_id, "❌ Kod topilmadi.")
         return
 
-    channel, reklama_id, post_count = data
+    channel, reklama_id, post_count = data["channel"], data["message_id"], data["post_count"]
 
-    # Tugmalarni yasash
     buttons = [InlineKeyboardButton(str(i), callback_data=f"kino:{code}:{i}") for i in range(1, post_count + 1)]
     keyboard = InlineKeyboardMarkup(row_width=5)
     keyboard.add(*buttons)
@@ -103,18 +102,18 @@ async def send_reklama_post(user_id, code):
     except:
         await bot.send_message(user_id, "❌ Reklama postni yuborib bo‘lmadi.")
 
-# === Tugmani bosganda kino post yuborish
+# === Tugma orqali kino post yuborish
 @dp.callback_query_handler(lambda c: c.data.startswith("kino:"))
 async def kino_button(callback: types.CallbackQuery):
     _, code, number = callback.data.split(":")
     number = int(number)
 
-    result = get_kino_by_code(code)
+    result = await get_kino_by_code(code)
     if not result:
         await callback.message.answer("❌ Kod topilmadi.")
         return
 
-    channel, base_id, post_count = result
+    channel, base_id, post_count = result["channel"], result["message_id"], result["post_count"]
 
     if number > post_count:
         await callback.answer("❌ Bunday post yo‘q!", show_alert=True)
@@ -148,9 +147,8 @@ async def add_kino_handler(message: types.Message, state: FSMContext):
 
         reklama_id = int(reklama_id)
         post_count = int(post_count)
-        add_kino_code(code, server_channel, reklama_id + 1, post_count)
+        await add_kino_code(code, server_channel, reklama_id + 1, post_count)
 
-        # Yuklab olish tugmasi
         download_btn = InlineKeyboardMarkup().add(
             InlineKeyboardButton("📥 Yuklab olish", url=f"https://t.me/{BOT_USERNAME}?start={code}")
         )
@@ -168,23 +166,26 @@ async def add_kino_handler(message: types.Message, state: FSMContext):
 
     await message.answer(f"✅ Yangi kodlar qo‘shildi:\n\n✅ Muvaffaqiyatli: {successful}\n❌ Xatolik: {failed}")
     await state.finish()
-    
+
 # === Kodlar ro‘yxati
 @dp.message_handler(lambda m: m.text == "📄 Kodlar ro‘yxati")
 async def kodlar(message: types.Message):
-    kodlar = get_all_codes()
+    kodlar = await get_all_codes()
     if not kodlar:
         await message.answer("📂 Kodlar yo‘q.")
         return
     text = "📄 Kodlar:\n"
-    for code, ch, msg_id, count in kodlar:
+    for row in kodlar:
+        code, ch, msg_id, count = row["code"], row["channel"], row["message_id"], row["post_count"]
         text += f"🔹 {code} → {ch} | {msg_id} ({count} post)\n"
     await message.answer(text)
 
 # === Statistika
 @dp.message_handler(lambda m: m.text == "📊 Statistika")
 async def stats(message: types.Message):
-    await message.answer(f"📦 Kodlar: {len(get_all_codes())}\n👥 Foydalanuvchilar: {get_user_count()}")
+    kodlar = await get_all_codes()
+    foydalanuvchilar = await get_user_count()
+    await message.answer(f"📦 Kodlar: {len(kodlar)}\n👥 Foydalanuvchilar: {foydalanuvchilar}")
 
 # === Bekor qilish
 @dp.message_handler(lambda m: m.text == "❌ Bekor qilish", state="*")
@@ -195,6 +196,10 @@ async def cancel(message: types.Message, state: FSMContext):
     kb.add("📊 Statistika", "❌ Bekor qilish")
     await message.answer("❌ Bekor qilindi", reply_markup=kb)
 
-# === BOT START
+# === START
+async def on_startup(dp):
+    await init_db()
+    print("✅ PostgreSQL bazaga ulandi!")
+
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
