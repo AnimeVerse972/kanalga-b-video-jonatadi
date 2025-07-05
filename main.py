@@ -70,7 +70,7 @@ async def handle_code_message(message: types.Message):
             InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"),
             InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub:{code}")
         )
-        await message.answer("❗ Kino olishdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
+        await message.answer("❗ Animeni kyuklashdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
     else:
         await send_reklama_post(message.from_user.id, code)
 
