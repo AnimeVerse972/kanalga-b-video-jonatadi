@@ -132,70 +132,43 @@ async def add_start(message: types.Message):
 
 @dp.message_handler(state=AdminStates.waiting_for_kino_data)
 async def add_kino_handler(message: types.Message, state: FSMContext):
-    parts = message.text.strip().split()
-    if len(parts) != 4:
-        await message.answer("❌ Format noto‘g‘ri!\nMasalan: `97 @MyServer 18 12`")
-        return await state.finish()
+    rows = message.text.strip().split("\n")
+    successful = 0
+    failed = 0
+    for row in rows:
+        parts = row.strip().split()
+        if len(parts) != 4:
+            failed += 1
+            continue
 
-    code, server_channel, reklama_id, post_count = parts
-    if not (code.isdigit() and reklama_id.isdigit() and post_count.isdigit()):
-        await message.answer("❌ Kod, post ID va son raqam bo‘lishi kerak.")
-        return await state.finish()
+        code, server_channel, reklama_id, post_count = parts
+        if not (code.isdigit() and reklama_id.isdigit() and post_count.isdigit()):
+            failed += 1
+            continue
 
-    reklama_id = int(reklama_id)
-    post_count = int(post_count)
+        reklama_id = int(reklama_id)
+        post_count = int(post_count)
+        add_kino_code(code, server_channel, reklama_id + 1, post_count)
 
-    # 🧠 Qismlar reklama postdan keyin boshlanadi → shuning uchun +1
-    add_kino_code(code, server_channel, reklama_id + 1, post_count)
-
-    # 🟢 Yuklab olish URL tugmasi (foydalanuvchini botga olib boradi)
-    download_btn = InlineKeyboardMarkup().add(
-    InlineKeyboardButton("📥 Yuklab olish", url=f"https://t.me/{BOT_USERNAME}?start={code}")
-)
-
-
-    try:
-        # ✅ Kanalga reklama postni tugma bilan yuborish
-        await bot.copy_message(
-            chat_id=CHANNEL_USERNAME,
-            from_chat_id=server_channel,
-            message_id=reklama_id,
-            reply_markup=download_btn  # faqat bitta tugma: Yuklab olish
+        # Yuklab olish tugmasi
+        download_btn = InlineKeyboardMarkup().add(
+            InlineKeyboardButton("📥 Yuklab olish", url=f"https://t.me/{BOT_USERNAME}?start={code}")
         )
-        await message.answer("✅ Reklama asosiy kanalga yuborildi.")
-    except Exception as e:
-        await message.answer(f"❌ Xatolik: {e}")
+
+        try:
+            await bot.copy_message(
+                chat_id=CHANNEL_USERNAME,
+                from_chat_id=server_channel,
+                message_id=reklama_id,
+                reply_markup=download_btn
+            )
+            successful += 1
+        except:
+            failed += 1
+
+    await message.answer(f"✅ Yangi kodlar qo‘shildi:\n\n✅ Muvaffaqiyatli: {successful}\n❌ Xatolik: {failed}")
     await state.finish()
-
-# === 📥 Yuklab olish handler (YANGI QO‘SHILGAN)
-@dp.callback_query_handler(lambda c: c.data.startswith("download:"))
-async def handle_download(callback: types.CallbackQuery):
-    code = callback.data.split(":")[1]
-
-    result = get_kino_by_code(code)
-    if not result:
-        await callback.message.answer("❌ Kod topilmadi.")
-        return
-
-    channel, reklama_id, post_count = result
-
-    # 🔘 Qismlar tugmasi
-    buttons = [InlineKeyboardButton(str(i), callback_data=f"kino:{code}:{i}") for i in range(1, post_count + 1)]
-    keyboard = InlineKeyboardMarkup(row_width=5)
-    keyboard.add(*buttons)
-
-    try:
-        # 🎬 Reklama post + qismlar tugmasi bilan yuborish
-        await bot.copy_message(
-            chat_id=callback.from_user.id,
-            from_chat_id=channel,
-            message_id=reklama_id - 1,
-            reply_markup=keyboard
-        )
-        await callback.answer()
-    except Exception as e:
-        await callback.message.answer(f"❌ Yuklab olishda xatolik: {e}")
-
+    
 # === Kodlar ro‘yxati
 @dp.message_handler(lambda m: m.text == "📄 Kodlar ro‘yxati")
 async def kodlar(message: types.Message):
