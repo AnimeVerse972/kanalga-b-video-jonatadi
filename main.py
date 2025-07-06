@@ -180,13 +180,25 @@ async def ask_code_for_reply(message: types.Message):
         await AdminStates.waiting_for_broadcast_message.set()
         await message.answer("✍️ Format: `kod matn`\nMasalan: `57 Bu animening 2-qismi yaqin kunlarda chiqadi!`")
 
-@dp.message_handler(state=AdminStates.waiting_for_broadcast_message)
+@dp.message_handler(state=AdminStates.waiting_for_broadcast_message, content_types=types.ContentType.ANY)
 async def send_reply_to_users(message: types.Message, state: FSMContext):
     await state.finish()
-    try:
-        code, matn = message.text.strip().split(" ", 1)
-    except:
-        await message.answer("❗ Noto‘g‘ri format. Masalan: `57 Sizga yoqdimi?`")
+
+    # Kod va matnni ajratish (text yoki captiondan)
+    if message.content_type == 'text':
+        try:
+            code, matn = message.text.strip().split(" ", 1)
+        except:
+            await message.answer("❗ Noto‘g‘ri format. Masalan: `57 Sizga yoqdimi?`")
+            return
+    elif message.caption:
+        try:
+            code, matn = message.caption.strip().split(" ", 1)
+        except:
+            await message.answer("❗ Noto‘g‘ri caption. Masalan: `57 Sizga yoqdimi?` (rasm yoki video ostida)")
+            return
+    else:
+        await message.answer("❗ Kod va matn topilmadi.")
         return
 
     data = await get_kino_by_code(code)
@@ -208,9 +220,11 @@ async def send_reply_to_users(message: types.Message, state: FSMContext):
                     from_chat_id=channel,
                     message_id=reklama_id
                 )
-                await bot.send_message(
+
+                await bot.copy_message(
                     chat_id=user_id,
-                    text=matn,
+                    from_chat_id=message.chat.id,
+                    message_id=message.message_id,
                     reply_to_message_id=sent.message_id
                 )
                 count += 1
