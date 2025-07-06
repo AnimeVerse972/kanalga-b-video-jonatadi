@@ -184,17 +184,16 @@ async def ask_code_for_reply(message: types.Message):
 async def send_reply_to_users(message: types.Message, state: FSMContext):
     await state.finish()
 
-    # Kod va matnni ajratish (text yoki captiondan)
     if message.content_type == 'text':
         try:
             code, matn = message.text.strip().split(" ", 1)
-        except:
+        except ValueError:
             await message.answer("❗ Noto‘g‘ri format. Masalan: `57 Sizga yoqdimi?`")
             return
     elif message.caption:
         try:
             code, matn = message.caption.strip().split(" ", 1)
-        except:
+        except ValueError:
             await message.answer("❗ Noto‘g‘ri caption. Masalan: `57 Sizga yoqdimi?` (rasm yoki video ostida)")
             return
     else:
@@ -228,10 +227,11 @@ async def send_reply_to_users(message: types.Message, state: FSMContext):
                     reply_to_message_id=sent.message_id
                 )
                 count += 1
-            except:
-                pass
+            except Exception as e:
+                print(f"Xatolik foydalanuvchiga xabar yuborishda: {e}")
 
     await message.answer(f"✅ Xabar {count} foydalanuvchiga yuborildi.")
+
 
 @dp.message_handler(lambda m: m.text == "❌ Bekor qilish", state="*")
 async def cancel(message: types.Message, state: FSMContext):
