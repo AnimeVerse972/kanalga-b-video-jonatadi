@@ -70,6 +70,20 @@ async def handle_code_message(message: types.Message):
     else:
         await send_reklama_post(message.from_user.id, code)
 
+@dp.message_handler(commands=['foydalanuvchilar'])
+async def list_users(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch("SELECT user_id FROM users")
+        if not rows:
+            await message.answer("👤 Hech qanday foydalanuvchi topilmadi.")
+            return
+        text = "👥 Foydalanuvchilar ro‘yxati:\n"
+        for row in rows:
+            text += f"- {row['user_id']}\n"
+        await message.answer(text)
+
 @dp.callback_query_handler(lambda c: c.data.startswith("check_sub:"))
 async def check_sub(callback: types.CallbackQuery):
     code = callback.data.split(":")[1]
