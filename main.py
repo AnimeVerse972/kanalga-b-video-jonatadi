@@ -6,7 +6,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from aiogram.utils import executor
 from dotenv import load_dotenv
 from keep_alive import keep_alive
-from database import init_db, add_user, get_user_count, add_kino_code, get_kino_by_code, get_all_codes
+from database import init_db, add_user, get_user_count, add_kino_code, get_kino_by_code, get_all_codes, delete_kino_code
 import os
 
 # === YUKLAMALAR ===
@@ -26,6 +26,7 @@ ADMINS = [6486825926]
 # === HOLATLAR ===
 class AdminStates(StatesGroup):
     waiting_for_kino_data = State()
+    waiting_for_delete_code = State()
 
 # === OBUNA TEKSHIRISH ===
 async def is_user_subscribed(user_id):
@@ -56,7 +57,8 @@ async def start_handler(message: types.Message):
     if message.from_user.id in ADMINS:
         kb = ReplyKeyboardMarkup(resize_keyboard=True)
         kb.add("➕ Anime qo‘shish", "📄 Kodlar ro‘yxati")
-        kb.add("📊 Statistika", "❌ Bekor qilish")
+        kb.add("📊 Statistika", "❌ Kodni o‘chirish")
+        kb.add("❌ Bekor qilish")
         await message.answer("👮‍♂️ Admin panel:", reply_markup=kb)
     else:
         await message.answer("🎬 Botga xush kelibsiz!\nKod kiriting:")
@@ -187,16 +189,37 @@ async def stats(message: types.Message):
     foydalanuvchilar = await get_user_count()
     await message.answer(f"📦 Kodlar: {len(kodlar)}\n👥 Foydalanuvchilar: {foydalanuvchilar}")
 
+# === ❌ Kodni o‘chirish
+@dp.message_handler(lambda m: m.text == "❌ Kodni o‘chirish")
+async def ask_delete_code(message: types.Message):
+    if message.from_user.id in ADMINS:
+        await AdminStates.waiting_for_delete_code.set()
+        await message.answer("🗑 Qaysi kodni o‘chirmoqchisiz? Kodni yuboring.")
+
+@dp.message_handler(state=AdminStates.waiting_for_delete_code)
+async def delete_code_handler(message: types.Message, state: FSMContext):
+    await state.finish()
+    code = message.text.strip()
+    if not code.isdigit():
+        await message.answer("❗ Noto‘g‘ri format. Kod raqamini yuboring.")
+        return
+    deleted = await delete_kino_code(code)
+    if deleted:
+        await message.answer(f"✅ Kod {code} o‘chirildi.")
+    else:
+        await message.answer("❌ Kod topilmadi yoki o‘chirib bo‘lmadi.")
+
 # === Bekor qilish
 @dp.message_handler(lambda m: m.text == "❌ Bekor qilish", state="*")
 async def cancel(message: types.Message, state: FSMContext):
     await state.finish()
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("➕ Anime qo‘shish", "📄 Kodlar ro‘yxati")
-    kb.add("📊 Statistika", "❌ Bekor qilish")
+    kb.add("📊 Statistika", "❌ Kodni o‘chirish")
+    kb.add("❌ Bekor qilish")
     await message.answer("❌ Bekor qilindi", reply_markup=kb)
 
-# === START
+# === START ===
 async def on_startup(dp):
     await init_db()
     print("✅ PostgreSQL bazaga ulandi!")
