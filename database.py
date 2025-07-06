@@ -33,7 +33,9 @@ async def init_db():
 
 async def add_user(user_id):
     async with db_pool.acquire() as conn:
-        await conn.execute("INSERT INTO users (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
+        await conn.execute(
+            "INSERT INTO users (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id
+        )
 
 async def get_user_count():
     async with db_pool.acquire() as conn:
@@ -62,3 +64,8 @@ async def get_all_codes():
     async with db_pool.acquire() as conn:
         rows = await conn.fetch("SELECT * FROM kino_codes")
         return rows
+
+async def delete_kino_code(code):
+    async with db_pool.acquire() as conn:
+        result = await conn.execute("DELETE FROM kino_codes WHERE code = $1", code)
+        return result.endswith("1")  # agar 1 ta satr o‘chirildi degani
