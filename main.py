@@ -208,10 +208,11 @@ async def show_code_stat(message: types.Message, state: FSMContext):
         await message.answer("❌ Statistikasi topilmadi.")
         return
 
-    text = f"📊 Kod: {code}
-🔍 Qidirilgan: {stat_row['searched']} ta
-📥 Yuklangan: {stat_row['viewed']} ta"
-    await message.answer(text)
+text = (
+    f"📊 Kod: {code}\n"
+    f"🔍 Qidirilgan: {stat_row['searched']} ta\n"
+    f"📥 Yuklangan: {stat_row['viewed']} ta"
+)
 
 # === Statistika
 @dp.message_handler(lambda m: m.text == "📊 Statistika")
