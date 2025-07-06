@@ -6,7 +6,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from aiogram.utils import executor
 from dotenv import load_dotenv
 from keep_alive import keep_alive
-from database import init_db, add_user, get_user_count, add_kino_code, get_kino_by_code, get_all_codes, db_pool
+from database import init_db, add_user, get_user_count, add_kino_code, get_kino_by_code, get_all_codes, db_pool, delete_kino_code, increment_stat
 import os
 
 load_dotenv()
@@ -24,7 +24,7 @@ ADMINS = [6486825926]
 
 class AdminStates(StatesGroup):
     waiting_for_kino_data = State()
-    waiting_for_broadcast_message = State()
+    waiting_for_delete_code = State()
 
 async def is_user_subscribed(user_id):
     try:
@@ -52,7 +52,7 @@ async def start_handler(message: types.Message):
     if message.from_user.id in ADMINS:
         kb = ReplyKeyboardMarkup(resize_keyboard=True)
         kb.add("➕ Anime qo‘shish", "📄 Kodlar ro‘yxati")
-        kb.add("📊 Statistika", "📢 Xabar yuborish")
+        kb.add("📊 Statistika", "❌ Kodni o‘chirish")
         kb.add("❌ Bekor qilish")
         await message.answer("👮‍♂️ Admin panel:", reply_markup=kb)
     else:
@@ -61,6 +61,7 @@ async def start_handler(message: types.Message):
 @dp.message_handler(lambda message: message.text.isdigit())
 async def handle_code_message(message: types.Message):
     code = message.text
+    await increment_stat(code, "searched")
     if not await is_user_subscribed(message.from_user.id):
         markup = InlineKeyboardMarkup().add(
             InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"),
@@ -69,20 +70,6 @@ async def handle_code_message(message: types.Message):
         await message.answer("❗ Anime olishdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
     else:
         await send_reklama_post(message.from_user.id, code)
-
-@dp.message_handler(commands=['foydalanuvchilar'])
-async def list_users(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        return
-    async with db_pool.acquire() as conn:
-        rows = await conn.fetch("SELECT user_id FROM users")
-        if not rows:
-            await message.answer("👤 Hech qanday foydalanuvchi topilmadi.")
-            return
-        text = "👥 Foydalanuvchilar ro‘yxati:\n"
-        for row in rows:
-            text += f"- {row['user_id']}\n"
-        await message.answer(text)
 
 @dp.callback_query_handler(lambda c: c.data.startswith("check_sub:"))
 async def check_sub(callback: types.CallbackQuery):
@@ -117,6 +104,8 @@ async def kino_button(callback: types.CallbackQuery):
     if not result:
         await callback.message.answer("❌ Kod topilmadi.")
         return
+
+    await increment_stat(code, "loaded")
 
     channel, base_id, post_count = result["channel"], result["message_id"], result["post_count"]
     if number > post_count:
@@ -184,75 +173,42 @@ async def kodlar(message: types.Message):
 
 @dp.message_handler(lambda m: m.text == "📊 Statistika")
 async def stats(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
     kodlar = await get_all_codes()
     foydalanuvchilar = await get_user_count()
-    await message.answer(f"📦 Kodlar: {len(kodlar)}\n👥 Foydalanuvchilar: {foydalanuvchilar}")
-
-@dp.message_handler(lambda m: m.text == "📢 Xabar yuborish")
-async def ask_code_for_reply(message: types.Message):
-    if message.from_user.id in ADMINS:
-        await AdminStates.waiting_for_broadcast_message.set()
-        await message.answer("✍️ Format: `kod matn`\nMasalan: `57 Bu animening 2-qismi yaqin kunlarda chiqadi!`")
-
-@dp.message_handler(state=AdminStates.waiting_for_broadcast_message, content_types=types.ContentType.ANY)
-async def send_reply_to_users(message: types.Message, state: FSMContext):
-    await state.finish()
-
-    if message.content_type == 'text':
-        try:
-            code, matn = message.text.strip().split(" ", 1)
-        except ValueError:
-            await message.answer("❗ Noto‘g‘ri format. Masalan: `57 Sizga yoqdimi?`")
-            return
-    elif message.caption:
-        try:
-            code, matn = message.caption.strip().split(" ", 1)
-        except ValueError:
-            await message.answer("❗ Noto‘g‘ri caption. Masalan: `57 Sizga yoqdimi?` (rasm yoki video ostida)")
-            return
-    else:
-        await message.answer("❗ Kod va matn topilmadi.")
-        return
-
-    data = await get_kino_by_code(code)
-    if not data:
-        await message.answer("❌ Kod topilmadi.")
-        return
-
-    channel = data["channel"]
-    reklama_id = data["message_id"] - 1
-    count = 0
-
+    text = f"📦 Kodlar: {len(kodlar)}\n👥 Foydalanuvchilar: {foydalanuvchilar}\n\n📊 Kodlar statistikasi:\n"
     async with db_pool.acquire() as conn:
-        rows = await conn.fetch("SELECT user_id FROM users")
+        rows = await conn.fetch("SELECT code, searched, loaded FROM stats")
         for row in rows:
-            user_id = row['user_id']
-            try:
-                sent = await bot.copy_message(
-                    chat_id=user_id,
-                    from_chat_id=channel,
-                    message_id=reklama_id
-                )
+            text += f"🔹 {row['code']} → 🔍 {row['searched']} ta qidiruv | 📥 {row['loaded']} yuklash\n"
+    await message.answer(text)
 
-                await bot.copy_message(
-                    chat_id=user_id,
-                    from_chat_id=message.chat.id,
-                    message_id=message.message_id,
-                    reply_to_message_id=sent.message_id
-                )
-                count += 1
-            except Exception as e:
-                print(f"Xatolik foydalanuvchiga xabar yuborishda: {e}")
+@dp.message_handler(lambda m: m.text == "❌ Kodni o‘chirish")
+async def ask_delete_code(message: types.Message):
+    if message.from_user.id in ADMINS:
+        await AdminStates.waiting_for_delete_code.set()
+        await message.answer("🗑 Qaysi kodni o‘chirmoqchisiz? Kodni yuboring.")
 
-    await message.answer(f"✅ Xabar {count} foydalanuvchiga yuborildi.")
-
+@dp.message_handler(state=AdminStates.waiting_for_delete_code)
+async def delete_code_handler(message: types.Message, state: FSMContext):
+    await state.finish()
+    code = message.text.strip()
+    if not code.isdigit():
+        await message.answer("❗ Noto‘g‘ri format. Kod raqamini yuboring.")
+        return
+    deleted = await delete_kino_code(code)
+    if deleted:
+        await message.answer(f"✅ Kod {code} o‘chirildi.")
+    else:
+        await message.answer("❌ Kod topilmadi yoki o‘chirib bo‘lmadi.")
 
 @dp.message_handler(lambda m: m.text == "❌ Bekor qilish", state="*")
 async def cancel(message: types.Message, state: FSMContext):
     await state.finish()
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("➕ Anime qo‘shish", "📄 Kodlar ro‘yxati")
-    kb.add("📊 Statistika", "📢 Xabar yuborish")
+    kb.add("📊 Statistika", "❌ Kodni o‘chirish")
     kb.add("❌ Bekor qilish")
     await message.answer("❌ Bekor qilindi", reply_markup=kb)
 
