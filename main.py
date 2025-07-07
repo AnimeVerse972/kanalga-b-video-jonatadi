@@ -6,7 +6,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from aiogram.utils import executor
 from dotenv import load_dotenv
 from keep_alive import keep_alive
-from database import init_db, add_user, get_user_count, add_kino_code, get_kino_by_code, get_all_codes, delete_kino_code
+from database import init_db, add_user, get_user_count, add_kino_code, get_kino_by_code, get_all_codes, delete_kino_code, get_code_stat, increment_stat
 import os
 
 # === YUKLAMALAR ===
@@ -27,6 +27,7 @@ ADMINS = [6486825926]
 class AdminStates(StatesGroup):
     waiting_for_kino_data = State()
     waiting_for_delete_code = State()
+    waiting_for_stat_code = State()
 
 # === OBUNA TEKSHIRISH ===
 async def is_user_subscribed(user_id):
@@ -57,11 +58,38 @@ async def start_handler(message: types.Message):
     if message.from_user.id in ADMINS:
         kb = ReplyKeyboardMarkup(resize_keyboard=True)
         kb.add("➕ Anime qo‘shish", "📄 Kodlar ro‘yxati")
-        kb.add("📊 Statistika", "❌ Kodni o‘chirish")
-        kb.add("❌ Bekor qilish")
+        kb.add("📊 Statistika", "📈 Kod statistikasi")
+        kb.add("❌ Kodni o‘chirish", "❌ Bekor qilish")
         await message.answer("👮‍♂️ Admin panel:", reply_markup=kb)
     else:
         await message.answer("🎬 Botga xush kelibsiz!\nKod kiriting:")
+
+# === Kod statistikasi tugmasi ===
+@dp.message_handler(lambda m: m.text == "📈 Kod statistikasi")
+async def ask_stat_code(message: types.Message):
+    if message.from_user.id not in ADMINS:
+        return
+    await message.answer("📥 Kod raqamini yuboring:")
+    await AdminStates.waiting_for_stat_code.set()
+
+@dp.message_handler(state=AdminStates.waiting_for_stat_code)
+async def show_code_stat(message: types.Message, state: FSMContext):
+    await state.finish()
+    code = message.text.strip()
+    if not code:
+        await message.answer("❗ Kod yuboring.")
+        return
+    stat = await get_code_stat(code)
+    if not stat:
+        await message.answer("❗ Bunday kod statistikasi topilmadi.")
+        return
+
+    await message.answer(
+        f"📊 <b>{code} statistikasi:</b>\n"
+        f"🔍 Qidirilgan: <b>{stat['searched']}</b>\n"
+        f"👁 Ko‘rilgan: <b>{stat['viewed']}</b>",
+        parse_mode="HTML"
+    )
 
 # === Oddiy raqam yuborilganda
 @dp.message_handler(lambda message: message.text.isdigit())
@@ -74,7 +102,12 @@ async def handle_code_message(message: types.Message):
         )
         await message.answer("❗ Kino olishdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
     else:
+        await increment_stat(code, "init")
+        await increment_stat(code, "searched")
         await send_reklama_post(message.from_user.id, code)
+        await increment_stat(code, "viewed")
+
+# Statistikani oddiy foydalanuvchiga ko‘rsatish qismi olib tashlandi
 
 # === Obuna tekshirish callback
 @dp.callback_query_handler(lambda c: c.data.startswith("check_sub:"))
@@ -215,8 +248,8 @@ async def cancel(message: types.Message, state: FSMContext):
     await state.finish()
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("➕ Anime qo‘shish", "📄 Kodlar ro‘yxati")
-    kb.add("📊 Statistika", "❌ Kodni o‘chirish")
-    kb.add("❌ Bekor qilish")
+    kb.add("📊 Statistika", "📈 Kod statistikasi")
+    kb.add("❌ Kodni o‘chirish", "❌ Bekor qilish")
     await message.answer("❌ Bekor qilindi", reply_markup=kb)
 
 # === START ===
