@@ -67,6 +67,10 @@ async def add_kino_code(code, channel, message_id, post_count):
                 message_id = EXCLUDED.message_id,
                 post_count = EXCLUDED.post_count;
         """, code, channel, message_id, post_count)
+        await conn.execute("""
+            INSERT INTO stats (code) VALUES ($1)
+            ON CONFLICT DO NOTHING
+        """, code)
 
 # === Kodni olish ===
 async def get_kino_by_code(code):
@@ -104,7 +108,12 @@ async def increment_stat(code, field):
                 UPDATE stats SET {field} = {field} + 1 WHERE code = $1
             """, code)
 
-# === Barcha statistikani olish ===
+# === Barcha statistikani olish (faqat adminlar uchun) ===
 async def get_all_stats():
     async with db_pool.acquire() as conn:
         return await conn.fetch("SELECT * FROM stats")
+
+# === Kod statistikasi olish (faqat adminlar uchun) ===
+async def get_code_stat(code):
+    async with db_pool.acquire() as conn:
+        return await conn.fetchrow("SELECT searched, viewed FROM stats WHERE code = $1", code)
