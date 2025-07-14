@@ -43,6 +43,20 @@ async def init_db():
             );
         """)
 
+        # Adminlar jadvali
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS admins (
+                user_id BIGINT PRIMARY KEY
+            );
+        """)
+
+        # Obuna kanallari jadvali
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS sub_channels (
+                username TEXT PRIMARY KEY
+            );
+        """)
+
 # === Foydalanuvchi qo‘shish ===
 async def add_user(user_id):
     async with db_pool.acquire() as conn:
@@ -117,3 +131,45 @@ async def get_all_stats():
 async def get_code_stat(code):
     async with db_pool.acquire() as conn:
         return await conn.fetchrow("SELECT searched, viewed FROM stats WHERE code = $1", code)
+
+# === ADMINLAR FUNKSIYALARI ===
+
+# Admin qo‘shish
+async def add_admin_db(user_id):
+    async with db_pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO admins (user_id) VALUES ($1)
+            ON CONFLICT DO NOTHING
+        """, user_id)
+
+# Admin o‘chirish
+async def remove_admin_db(user_id):
+    async with db_pool.acquire() as conn:
+        await conn.execute("DELETE FROM admins WHERE user_id = $1", user_id)
+
+# Barcha adminlar ro‘yxati
+async def get_admins():
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch("SELECT user_id FROM admins")
+        return [row['user_id'] for row in rows]
+
+# === OBUNA KANALLAR FUNKSIYALARI ===
+
+# Kanal qo‘shish
+async def add_channel_db(channel):
+    async with db_pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO sub_channels (username) VALUES ($1)
+            ON CONFLICT DO NOTHING
+        """, channel)
+
+# Kanal o‘chirish
+async def remove_channel_db(channel):
+    async with db_pool.acquire() as conn:
+        await conn.execute("DELETE FROM sub_channels WHERE username = $1", channel)
+
+# Barcha obuna kanallari ro‘yxati
+async def get_channels():
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch("SELECT username FROM sub_channels")
+        return [row['username'] for row in rows]
