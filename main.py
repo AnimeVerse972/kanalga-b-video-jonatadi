@@ -21,7 +21,7 @@ bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
-ADMINS = [6486825926]
+ADMINS = [6486825926,8017776953]
 
 # === HOLATLAR ===
 class AdminStates(StatesGroup):
