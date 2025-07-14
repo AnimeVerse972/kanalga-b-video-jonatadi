@@ -6,6 +6,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from aiogram.utils import executor
 from dotenv import load_dotenv
 from keep_alive import keep_alive
+from database import add_admin_db, init_db
 from database import (
     init_db, add_user, get_user_count,
     add_kino_code, get_kino_by_code, get_all_codes,
@@ -14,6 +15,7 @@ from database import (
     get_channels, add_channel_db, remove_channel_db
 )
 import os
+import asyncio
 
 # === YUKLAMALAR ===
 load_dotenv()
@@ -232,6 +234,16 @@ async def on_startup(dp):
     ADMINS = await get_admins()
     SUB_CHANNELS = await get_channels()
     print("✅ Bot ishga tushdi!")
+
+# 🔽 BUNI QO‘SHASIZ
+import asyncio
+from database import add_admin_db, init_db
+
+async def add_myself_as_admin():
+    await init_db()
+    await add_admin_db(6486825926)  # 👈 bu yerga ID yozing
+
+asyncio.run(add_myself_as_admin())  # 🟢 Bu yerni ishga tushiradi
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
