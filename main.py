@@ -6,6 +6,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from aiogram.utils import executor
 from dotenv import load_dotenv
 from keep_alive import keep_alive
+from database import add_admin_db, get_admins
 from database import (
     init_db, add_user, get_user_count,
     add_kino_code, get_kino_by_code, get_all_codes,
@@ -224,6 +225,15 @@ async def delete_code_handler(message: types.Message, state: FSMContext):
         await message.answer(f"✅ Kod {code} o‘chirildi.")
     else:
         await message.answer("❌ Kod topilmadi.")
+
+@dp.message_handler(commands=['admin'])
+async def add_admin_cmd(message: types.Message):
+    admins = await get_admins()
+    if message.from_user.id in admins:
+        await message.answer("⛔ Siz allaqachon adminsiz.")
+    else:
+        await add_admin_db(message.from_user.id)
+        await message.answer("✅ Siz endi admin sifatida qo‘shildingiz!")
 
 # === START ===
 async def on_startup(dp):
