@@ -14,7 +14,7 @@ load_dotenv()
 keep_alive()
 
 API_TOKEN = os.getenv("API_TOKEN")
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")
+CHANNEL_USERNAMES = os.getenv("CHANNEL_USERNAME").split(",")
 BOT_USERNAME = os.getenv("BOT_USERNAME")
 
 bot = Bot(token=API_TOKEN)
@@ -32,8 +32,11 @@ class AdminStates(StatesGroup):
 # === OBUNA TEKSHIRISH ===
 async def is_user_subscribed(user_id):
     try:
-        m = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return m.status in ["member", "administrator", "creator"]
+        for channel_username in CHANNEL_USERNAMES:
+            m = await bot.get_chat_member(channel_username.strip(), user_id)
+            if m.status not in ["member", "administrator", "creator"]:
+                return False
+        return True
     except:
         return False
 
