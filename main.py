@@ -14,7 +14,7 @@ load_dotenv()
 keep_alive()
 
 API_TOKEN = os.getenv("API_TOKEN")
-CHANNEL_USERNAMES = os.getenv("CHANNEL_USERNAME").split(",")
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")
 BOT_USERNAME = os.getenv("BOT_USERNAME")
 
 bot = Bot(token=API_TOKEN)
@@ -32,13 +32,9 @@ class AdminStates(StatesGroup):
 # === OBUNA TEKSHIRISH ===
 async def is_user_subscribed(user_id):
     try:
-        for channel_username in CHANNEL_USERNAMES:
-            m = await bot.get_chat_member(channel_username.strip(), user_id)
-            if m.status not in ["member", "administrator", "creator"]:
-                return False
-        return True
-    except Exception as e:
-        print(f"Error checking subscription: {e}")
+        m = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        return m.status in ["member", "administrator", "creator"]
+    except:
         return False
 
 # === /start ===
@@ -51,7 +47,7 @@ async def start_handler(message: types.Message):
         code = args
         if not await is_user_subscribed(message.from_user.id):
             markup = InlineKeyboardMarkup().add(
-                InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAMES[0].strip('@')}"),
+                InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"),
                 InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub:{code}")
             )
             await message.answer("❗ Kino olishdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
