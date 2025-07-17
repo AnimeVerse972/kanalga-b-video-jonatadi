@@ -37,7 +37,8 @@ async def is_user_subscribed(user_id):
             if m.status not in ["member", "administrator", "creator"]:
                 return False
         return True
-    except:
+    except Exception as e:
+        print(f"Error checking subscription: {e}")
         return False
 
 # === /start ===
@@ -50,7 +51,7 @@ async def start_handler(message: types.Message):
         code = args
         if not await is_user_subscribed(message.from_user.id):
             markup = InlineKeyboardMarkup().add(
-                InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"),
+                InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAMES[0].strip('@')}"),
                 InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub:{code}")
             )
             await message.answer("❗ Kino olishdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
