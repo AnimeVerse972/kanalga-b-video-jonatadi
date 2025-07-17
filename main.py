@@ -14,7 +14,7 @@ load_dotenv()
 keep_alive()
 
 API_TOKEN = os.getenv("API_TOKEN")
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")
+CHANNELS = os.getenv("CHANNELS").split(",")
 BOT_USERNAME = os.getenv("BOT_USERNAME")
 
 bot = Bot(token=API_TOKEN)
@@ -31,11 +31,14 @@ class AdminStates(StatesGroup):
 
 # === OBUNA TEKSHIRISH ===
 async def is_user_subscribed(user_id):
-    try:
-        m = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return m.status in ["member", "administrator", "creator"]
-    except:
-        return False
+    for channel in CHANNELS:
+        try:
+            member = await bot.get_chat_member(channel.strip(), user_id)
+            if member.status not in ["member", "administrator", "creator"]:
+                return False
+        except:
+            return False
+    return True
 
 # === /start ===
 @dp.message_handler(commands=['start'])
@@ -46,23 +49,26 @@ async def start_handler(message: types.Message):
     if args and args.isdigit():
         code = args
         if not await is_user_subscribed(message.from_user.id):
-            markup = InlineKeyboardMarkup().add(
-                InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"),
-                InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub:{code}")
-            )
-            await message.answer("❗ Kino olishdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
+            buttons = [
+                InlineKeyboardButton(f"\ud83d\udce2 {channel.strip()}", url=f"https://t.me/{channel.strip('@')}")
+                for channel in CHANNELS
+            ]
+            buttons.append(InlineKeyboardButton("\u2705 Tekshirish", callback_data=f"check_sub:{code}"))
+            markup = InlineKeyboardMarkup().add(*buttons)
+            await message.answer("\u2757 Animeni olishdan oldin kanalga obuna bo'ling:", reply_markup=markup)
         else:
             await send_reklama_post(message.from_user.id, code)
         return
 
     if message.from_user.id in ADMINS:
         kb = ReplyKeyboardMarkup(resize_keyboard=True)
-        kb.add("➕ Anime qo‘shish", "📄 Kodlar ro‘yxati")
-        kb.add("📊 Statistika", "📈 Kod statistikasi")
-        kb.add("❌ Kodni o‘chirish", "❌ Bekor qilish")
-        await message.answer("👮‍♂️ Admin panel:", reply_markup=kb)
+        kb.add("\u2795 Anime qo\'shish", "\ud83d\udcc4 Kodlar ro\'yxati")
+        kb.add("\ud83d\udcca Statistika", "\ud83d\udcc8 Kod statistikasi")
+        kb.add("\u274c Kodni o\'chirish", "\u274c Bekor qilish")
+        await message.answer("\ud83d\udc6e\u200d\u2642\ufe0f Admin panel:", reply_markup=kb)
     else:
-        await message.answer("🎬 Botga xush kelibsiz!\nKod kiriting:")
+        await message.answer("\ud83c\udfae Botga xush kelibsiz!\nKod kiriting:")
+
 
 # === Kod statistikasi tugmasi ===
 @dp.message_handler(lambda m: m.text == "📈 Kod statistikasi")
@@ -96,28 +102,29 @@ async def show_code_stat(message: types.Message, state: FSMContext):
 async def handle_code_message(message: types.Message):
     code = message.text
     if not await is_user_subscribed(message.from_user.id):
-        markup = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"),
-            InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub:{code}")
-        )
-        await message.answer("❗ Kino olishdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
+        buttons = [
+            InlineKeyboardButton(f"\ud83d\udce2 {channel.strip()}", url=f"https://t.me/{channel.strip('@')}")
+            for channel in CHANNELS
+        ]
+        buttons.append(InlineKeyboardButton("\u2705 Tekshirish", callback_data=f"check_sub:{code}"))
+        markup = InlineKeyboardMarkup().add(*buttons)
+        await message.answer("\u2757 Animeni olishdan oldin kanalga obuna bo'ling:", reply_markup=markup)
     else:
         await increment_stat(code, "init")
         await increment_stat(code, "searched")
         await send_reklama_post(message.from_user.id, code)
         await increment_stat(code, "viewed")
 
-# Statistikani oddiy foydalanuvchiga ko‘rsatish qismi olib tashlandi
 
 # === Obuna tekshirish callback
 @dp.callback_query_handler(lambda c: c.data.startswith("check_sub:"))
 async def check_sub(callback: types.CallbackQuery):
     code = callback.data.split(":")[1]
     if await is_user_subscribed(callback.from_user.id):
-        await callback.message.edit_text("✅ Obuna tasdiqlandi!")
+        await callback.message.edit_text("\u2705 Obuna tasdiqlandi!")
         await send_reklama_post(callback.from_user.id, code)
     else:
-        await callback.answer("❗ Obuna bo‘lmagansiz!", show_alert=True)
+        await callback.answer("\u2757 Obuna bo'lmagansiz!", show_alert=True)
 
 # === Reklama postni yuborish
 async def send_reklama_post(user_id, code):
