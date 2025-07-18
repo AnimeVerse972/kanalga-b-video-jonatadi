@@ -14,7 +14,8 @@ load_dotenv()
 keep_alive()
 
 API_TOKEN = os.getenv("API_TOKEN")
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")
+CHANNELS = os.getenv("CHANNEL_USERNAMES").split(",")
+MAIN_CHANNEL = os.getenv("MAIN_CHANNEL")
 BOT_USERNAME = os.getenv("BOT_USERNAME")
 
 bot = Bot(token=API_TOKEN)
@@ -32,10 +33,14 @@ class AdminStates(StatesGroup):
 # === OBUNA TEKSHIRISH ===
 async def is_user_subscribed(user_id):
     try:
-        m = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return m.status in ["member", "administrator", "creator"]
+        for channel in CHANNELS:
+            m = await bot.get_chat_member(channel.strip(), user_id)
+            if m.status not in ["member", "administrator", "creator"]:
+                return False
+        return True
     except:
         return False
+
 
 # === /start ===
 @dp.message_handler(commands=['start'])
@@ -46,11 +51,13 @@ async def start_handler(message: types.Message):
     if args and args.isdigit():
         code = args
         if not await is_user_subscribed(message.from_user.id):
-            markup = InlineKeyboardMarkup().add(
-                InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"),
+            markup = InlineKeyboardMarkup()
+            # Faqat birinchi kanal havola uchun ishlatiladi
+            markup.add(
+                InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNELS[0].strip('@')}"),
                 InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub:{code}")
             )
-            await message.answer("❗ Kino olishdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
+            await message.answer("❗ Kino olishdan oldin quyidagi kanal(lar)ga obuna bo‘ling:", reply_markup=markup)
         else:
             await send_reklama_post(message.from_user.id, code)
         return
@@ -63,6 +70,7 @@ async def start_handler(message: types.Message):
         await message.answer("👮‍♂️ Admin panel:", reply_markup=kb)
     else:
         await message.answer("🎬 Botga xush kelibsiz!\nKod kiriting:")
+
 
 # === Kod statistikasi tugmasi ===
 @dp.message_handler(lambda m: m.text == "📈 Kod statistikasi")
@@ -96,11 +104,12 @@ async def show_code_stat(message: types.Message, state: FSMContext):
 async def handle_code_message(message: types.Message):
     code = message.text
     if not await is_user_subscribed(message.from_user.id):
-        markup = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"),
+        markup = InlineKeyboardMarkup()
+        markup.add(
+            InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNELS[0].strip('@')}"),
             InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub:{code}")
         )
-        await message.answer("❗ Kino olishdan oldin kanalga obuna bo‘ling:", reply_markup=markup)
+        await message.answer("❗ Kino olishdan oldin quyidagi kanal(lar)ga obuna bo‘ling:", reply_markup=markup)
     else:
         await increment_stat(code, "init")
         await increment_stat(code, "searched")
@@ -190,7 +199,7 @@ async def add_kino_handler(message: types.Message, state: FSMContext):
 
         try:
             await bot.copy_message(
-                chat_id=CHANNEL_USERNAME,
+                 chat_id=MAIN_CHANNEL,
                 from_chat_id=server_channel,
                 message_id=reklama_id,
                 reply_markup=download_btn
