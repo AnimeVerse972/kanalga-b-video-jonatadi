@@ -32,14 +32,16 @@ class AdminStates(StatesGroup):
 
 # === OBUNA TEKSHIRISH ===
 async def is_user_subscribed(user_id):
-    try:
-        for channel in CHANNELS:
-            m = await bot.get_chat_member(channel.strip(), user_id)
-            if m.status not in ["member", "administrator", "creator"]:
+    for channel in CHANNELS:
+        try:
+            member = await bot.get_chat_member(channel.strip(), user_id)
+            if member.status not in ["member", "administrator", "creator"]:
                 return False
-        return True
-    except:
-        return False
+        except Exception as e:
+            # Agar kanalga kira olmasa yoki boshqa xato bo‘lsa
+            print(f"❗ Obuna tekshirishda xatolik: {channel} -> {e}")
+            return False
+    return True
 
 
 # === /start ===
