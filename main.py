@@ -22,6 +22,17 @@ bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
+async def make_subscribe_markup(code):
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    for channel in CHANNELS:
+        try:
+            invite_link = await bot.create_chat_invite_link(channel.strip())
+            keyboard.add(InlineKeyboardButton("📢 Obuna bo‘lish", url=invite_link.invite_link))
+        except Exception as e:
+            print(f"❌ Link yaratishda xatolik: {channel} -> {e}")
+    keyboard.add(InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub:{code}"))
+    return keyboard
+
 ADMINS = [6486825926,8017776953]
 
 # === HOLATLAR ===
@@ -53,12 +64,7 @@ async def start_handler(message: types.Message):
     if args and args.isdigit():
         code = args
         if not await is_user_subscribed(message.from_user.id):
-            markup = InlineKeyboardMarkup()
-            # Faqat birinchi kanal havola uchun ishlatiladi
-            markup.add(
-                InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNELS[0].strip('@')}"),
-                InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub:{code}")
-            )
+            markup = await make_subscribe_markup(code)
             await message.answer("❗ Kino olishdan oldin quyidagi kanal(lar)ga obuna bo‘ling:", reply_markup=markup)
         else:
             await send_reklama_post(message.from_user.id, code)
@@ -72,7 +78,6 @@ async def start_handler(message: types.Message):
         await message.answer("👮‍♂️ Admin panel:", reply_markup=kb)
     else:
         await message.answer("🎬 Botga xush kelibsiz!\nKod kiriting:")
-
 
 # === Kod statistikasi tugmasi ===
 @dp.message_handler(lambda m: m.text == "📈 Kod statistikasi")
@@ -106,17 +111,14 @@ async def show_code_stat(message: types.Message, state: FSMContext):
 async def handle_code_message(message: types.Message):
     code = message.text
     if not await is_user_subscribed(message.from_user.id):
-        markup = InlineKeyboardMarkup()
-        markup.add(
-            InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNELS[0].strip('@')}"),
-            InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub:{code}")
-        )
+        markup = await make_subscribe_markup(code)
         await message.answer("❗ Kino olishdan oldin quyidagi kanal(lar)ga obuna bo‘ling:", reply_markup=markup)
     else:
         await increment_stat(code, "init")
         await increment_stat(code, "searched")
         await send_reklama_post(message.from_user.id, code)
         await increment_stat(code, "viewed")
+
 
 # Statistikani oddiy foydalanuvchiga ko‘rsatish qismi olib tashlandi
 
