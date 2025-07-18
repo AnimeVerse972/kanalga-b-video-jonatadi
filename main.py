@@ -122,14 +122,26 @@ async def handle_code_message(message: types.Message):
 
 # === Obuna tekshirish callback
 @dp.callback_query_handler(lambda c: c.data.startswith("check_sub:"))
-async def check_sub(callback: types.CallbackQuery):
-    code = callback.data.split(":")[1]
-    if await is_user_subscribed(callback.from_user.id):
-        await callback.message.edit_text("✅ Obuna tasdiqlandi!")
-        await send_reklama_post(callback.from_user.id, code)
-    else:
-        await callback.answer("❗ Obuna bo‘lmagansiz!", show_alert=True)
+async def check_subs(user_id):
+    not_subscribed = []
+    buttons = []
+    for channel in CHANNELS:
+        try:
+            user = await bot.get_chat_member(chat_id=channel, user_id=user_id)
+            if user.status in ['left', 'kicked']:
+                not_subscribed.append(channel)
+                invite_link = await bot.create_chat_invite_link(channel)
+                buttons.append(
+                    [InlineKeyboardButton("🔔 Obuna bo‘lish", url=invite_link.invite_link)]
+                )
+        except Exception as e:
+            print(f"❌ Obuna tekshiruv xatosi: {channel} -> {e}")
+            continue
 
+    if not_subscribed:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        return False, keyboard
+    return True, None
 # === Reklama postni yuborish
 async def send_reklama_post(user_id, code):
     data = await get_kino_by_code(code)
