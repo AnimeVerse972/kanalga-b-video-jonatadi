@@ -117,3 +117,9 @@ async def get_all_stats():
 async def get_code_stat(code):
     async with db_pool.acquire() as conn:
         return await conn.fetchrow("SELECT searched, viewed FROM stats WHERE code = $1", code)
+
+# === Barcha foydalanuvchi IDlarini olish ===
+async def get_all_user_ids():
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch("SELECT user_id FROM users")
+        return [row["user_id"] for row in rows]
